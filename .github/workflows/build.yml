@@ -1,0 +1,44 @@
+name: Build APK from Phone
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Generate Flutter Project Automatically
+        run: |
+          flutter create --org com.custom --project-name ir_remote --platforms android app_build
+          cp setup/main.dart app_build/lib/main.dart
+          cp setup/MainActivity.kt app_build/android/app/src/main/kotlin/com/custom/ir_remote/MainActivity.kt
+          sed -i 's/<application/<uses-permission android:name="android.permission.TRANSMIT_IR" \/>\n    <application/' app_build/android/app/src/main/AndroidManifest.xml
+
+      - name: Add Dependencies & Build Release APK
+        working-directory: app_build
+        run: |
+          flutter pub add shared_preferences
+          flutter build apk --release
+
+      - name: Upload Ready-to-Install APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Universal-IR-Remote-APK
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk

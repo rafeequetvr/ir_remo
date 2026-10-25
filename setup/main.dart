@@ -4,166 +4,204 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  runApp(const UniversalIrApp());
+  runApp(const MiRemoteCloneApp());
 }
 
-class UniversalIrApp extends StatelessWidget {
-  const UniversalIrApp({super.key});
+class MiRemoteCloneApp extends StatelessWidget {
+  const MiRemoteCloneApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Universal IR Remote',
+      title: 'Mi Remote',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF14161B),
+        scaffoldBackgroundColor: const Color(0xFF121418),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1A1D24),
+          elevation: 0,
+          centerTitle: true,
+        ),
         colorScheme: const ColorScheme.dark(
-          primary: Colors.amber,
-          secondary: Colors.blueAccent,
+          primary: Color(0xFFFF6700), // Xiaomi Orange
+          secondary: Color(0xFF00BFA5),
         ),
       ),
-      home: const RemoteHomeScreen(),
+      home: const MiDashboardScreen(),
     );
   }
 }
 
-class IrButtonModel {
-  String label;
-  String type;
+// ==========================================
+// DATA MODELS & PRESET DATABASE
+// ==========================================
+
+class IrCommand {
+  String type; // 'nec' or 'raw'
   String payload;
-  int colorValue;
 
-  IrButtonModel({
-    required this.label,
-    required this.type,
-    required this.payload,
-    this.colorValue = 0xFF262A34,
-  });
+  IrCommand({required this.type, required this.payload});
 
-  Map<String, dynamic> toJson() => {
-        'label': label,
-        'type': type,
-        'payload': payload,
-        'colorValue': colorValue,
-      };
+  Map<String, dynamic> toJson() => {'type': type, 'payload': payload};
 
-  factory IrButtonModel.fromJson(Map<String, dynamic> json) => IrButtonModel(
-        label: json['label'] ?? 'BTN',
+  factory IrCommand.fromJson(Map<String, dynamic> json) => IrCommand(
         type: json['type'] ?? 'nec',
         payload: json['payload'] ?? '0x00000000',
-        colorValue: json['colorValue'] ?? 0xFF262A34,
       );
 }
 
-class RemoteProfileModel {
+class MiRemoteDevice {
+  String id;
   String name;
+  String brand;
+  String category; // 'TV', 'AC', 'FAN'
   int frequency;
-  List<IrButtonModel> buttons;
+  Map<String, IrCommand> keymap;
 
-  RemoteProfileModel({
+  MiRemoteDevice({
+    required this.id,
     required this.name,
+    required this.brand,
+    required this.category,
     this.frequency = 38000,
-    required this.buttons,
+    required this.keymap,
   });
 
   Map<String, dynamic> toJson() => {
+        'id': id,
         'name': name,
+        'brand': brand,
+        'category': category,
         'frequency': frequency,
-        'buttons': buttons.map((b) => b.toJson()).toList(),
+        'keymap': keymap.map((k, v) => MapEntry(k, v.toJson())),
       };
 
-  factory RemoteProfileModel.fromJson(Map<String, dynamic> json) =>
-      RemoteProfileModel(
-        name: json['name'] ?? 'New Remote',
-        frequency: json['frequency'] ?? 38000,
-        buttons: (json['buttons'] as List<dynamic>? ?? [])
-            .map((b) => IrButtonModel.fromJson(b))
-            .toList(),
-      );
-}
-
-class RemoteHomeScreen extends StatefulWidget {
-  const RemoteHomeScreen({super.key});
-
-  @override
-  State<RemoteHomeScreen> createState() => _RemoteHomeScreenState();
-}
-
-class _RemoteHomeScreenState extends State<RemoteHomeScreen> {
-  static const platform = MethodChannel('com.custom.ir_remote/ir');
-  static const String _storageKey = 'saved_ir_remotes_v1';
-
-  List<RemoteProfileModel> _profiles = [];
-  int _selectedIndex = 0;
-  bool _hasIr = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkIrSupport();
-    _loadProfiles();
-  }
-
-  Future<void> _checkIrSupport() async {
-    try {
-      final bool res = await platform.invokeMethod('hasIrEmitter');
-      setState(() => _hasIr = res);
-    } catch (_) {
-      setState(() => _hasIr = false);
-    }
-  }
-
-  Future<void> _loadProfiles() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? rawJson = prefs.getString(_storageKey);
-
-    if (rawJson != null && rawJson.isNotEmpty) {
-      try {
-        final List<dynamic> decoded = jsonDecode(rawJson);
-        setState(() {
-          _profiles = decoded.map((e) => RemoteProfileModel.fromJson(e)).toList();
-          _selectedIndex = 0;
-        });
-        return;
-      } catch (_) {}
-    }
-
-    setState(() {
-      _profiles = [_getDefaultAtombergProfile()];
-      _selectedIndex = 0;
-    });
-    _saveProfiles();
-  }
-
-  Future<void> _saveProfiles() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String encoded = jsonEncode(_profiles.map((e) => e.toJson()).toList());
-    await prefs.setString(_storageKey, encoded);
-  }
-
-  RemoteProfileModel _getDefaultAtombergProfile() {
-    return RemoteProfileModel(
-      name: 'Atomberg Fan',
-      frequency: 38000,
-      buttons: [
-        IrButtonModel(label: 'POWER', type: 'nec', payload: '0xF300916E', colorValue: 0xFFE53935),
-        IrButtonModel(label: 'LED', type: 'nec', payload: '0xF3000AF5', colorValue: 0xFFFF8F00),
-        IrButtonModel(label: 'SPEED 1', type: 'nec', payload: '0xF30004FB'),
-        IrButtonModel(label: 'SPEED 2', type: 'nec', payload: '0xF30005FA'),
-        IrButtonModel(label: 'SPEED 3', type: 'nec', payload: '0xF30006F9'),
-        IrButtonModel(label: 'SPEED 4', type: 'nec', payload: '0xF30007F8'),
-        IrButtonModel(label: 'SPEED 5', type: 'nec', payload: '0xF30008F7'),
-        IrButtonModel(label: 'BOOST', type: 'nec', payload: '0xF30009F6', colorValue: 0xFF1E88E5),
-        IrButtonModel(label: 'SLEEP', type: 'nec', payload: '0xF3000BF4'),
-        IrButtonModel(label: 'TIMER 1H', type: 'nec', payload: '0xF3000CF3'),
-        IrButtonModel(label: 'TIMER 2H', type: 'nec', payload: '0xF3000DF2'),
-        IrButtonModel(label: 'TIMER 3H', type: 'nec', payload: '0xF3000EF1'),
-        IrButtonModel(label: 'TIMER 6H', type: 'nec', payload: '0xF3000FF0'),
-      ],
+  factory MiRemoteDevice.fromJson(Map<String, dynamic> json) {
+    final rawMap = json['keymap'] as Map<String, dynamic>? ?? {};
+    return MiRemoteDevice(
+      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      name: json['name'] ?? 'Remote',
+      brand: json['brand'] ?? 'Generic',
+      category: json['category'] ?? 'FAN',
+      frequency: json['frequency'] ?? 38000,
+      keymap: rawMap.map((k, v) => MapEntry(k, IrCommand.fromJson(v))),
     );
   }
+}
 
-  List<int> _buildNecPattern(int hexCode) {
+// Built-in Preset Database (TV, AC, Fan)
+final List<MiRemoteDevice> builtInPresets = [
+  // 1. Atomberg Fan
+  MiRemoteDevice(
+    id: 'preset_atomberg',
+    name: 'Atomberg Fan',
+    brand: 'Atomberg',
+    category: 'FAN',
+    keymap: {
+      'POWER': IrCommand(type: 'nec', payload: '0xF300916E'),
+      'LED': IrCommand(type: 'nec', payload: '0xF3000AF5'),
+      'SPEED_1': IrCommand(type: 'nec', payload: '0xF30004FB'),
+      'SPEED_2': IrCommand(type: 'nec', payload: '0xF30005FA'),
+      'SPEED_3': IrCommand(type: 'nec', payload: '0xF30006F9'),
+      'SPEED_4': IrCommand(type: 'nec', payload: '0xF30007F8'),
+      'SPEED_5': IrCommand(type: 'nec', payload: '0xF30008F7'),
+      'BOOST': IrCommand(type: 'nec', payload: '0xF30009F6'),
+      'SLEEP': IrCommand(type: 'nec', payload: '0xF3000BF4'),
+      'TIMER_1H': IrCommand(type: 'nec', payload: '0xF3000CF3'),
+      'TIMER_2H': IrCommand(type: 'nec', payload: '0xF3000DF2'),
+      'TIMER_3H': IrCommand(type: 'nec', payload: '0xF3000EF1'),
+      'TIMER_6H': IrCommand(type: 'nec', payload: '0xF3000FF0'),
+    },
+  ),
+  // 2. Orient / Crompton Fan
+  MiRemoteDevice(
+    id: 'preset_orient',
+    name: 'Orient BLDC Fan',
+    brand: 'Orient',
+    category: 'FAN',
+    keymap: {
+      'POWER': IrCommand(type: 'nec', payload: '0x00FF02FD'),
+      'LED': IrCommand(type: 'nec', payload: '0x00FF6897'),
+      'SPEED_1': IrCommand(type: 'nec', payload: '0x00FF22DD'),
+      'SPEED_2': IrCommand(type: 'nec', payload: '0x00FF02FD'),
+      'SPEED_3': IrCommand(type: 'nec', payload: '0x00FFC23D'),
+      'SPEED_4': IrCommand(type: 'nec', payload: '0x00FFE01F'),
+      'SPEED_5': IrCommand(type: 'nec', payload: '0x00FFA857'),
+      'BOOST': IrCommand(type: 'nec', payload: '0x00FF906F'),
+      'SLEEP': IrCommand(type: 'nec', payload: '0x00FF9867'),
+      'TIMER_1H': IrCommand(type: 'nec', payload: '0x00FFB04F'),
+      'TIMER_2H': IrCommand(type: 'nec', payload: '0x00FF30CF'),
+      'TIMER_3H': IrCommand(type: 'nec', payload: '0x00FF18E7'),
+      'TIMER_6H': IrCommand(type: 'nec', payload: '0x00FF7A85'),
+    },
+  ),
+  // 3. LG / Mi / Samsung Smart TV
+  MiRemoteDevice(
+    id: 'preset_lg_tv',
+    name: 'Living Room TV',
+    brand: 'LG / Generic TV',
+    category: 'TV',
+    keymap: {
+      'POWER': IrCommand(type: 'nec', payload: '0x20DF10EF'),
+      'MUTE': IrCommand(type: 'nec', payload: '0x20DF906F'),
+      'SOURCE': IrCommand(type: 'nec', payload: '0x20DFD02F'),
+      'UP': IrCommand(type: 'nec', payload: '0x20DF02FD'),
+      'DOWN': IrCommand(type: 'nec', payload: '0x20DF827D'),
+      'LEFT': IrCommand(type: 'nec', payload: '0x20DFE01F'),
+      'RIGHT': IrCommand(type: 'nec', payload: '0x20DF609F'),
+      'OK': IrCommand(type: 'nec', payload: '0x20DF22DD'),
+      'VOL_UP': IrCommand(type: 'nec', payload: '0x20DF40BF'),
+      'VOL_DOWN': IrCommand(type: 'nec', payload: '0x20DFC03F'),
+      'CH_UP': IrCommand(type: 'nec', payload: '0x20DF00FF'),
+      'CH_DOWN': IrCommand(type: 'nec', payload: '0x20DF807F'),
+      'HOME': IrCommand(type: 'nec', payload: '0x20DF3EC1'),
+      'BACK': IrCommand(type: 'nec', payload: '0x20DF14EB'),
+      'MENU': IrCommand(type: 'nec', payload: '0x20DFC23D'),
+    },
+  ),
+  // 4. LG / Voltas Split AC
+  MiRemoteDevice(
+    id: 'preset_lg_ac',
+    name: 'Bedroom AC',
+    brand: 'LG / Voltas',
+    category: 'AC',
+    keymap: {
+      'POWER_ON': IrCommand(type: 'nec', payload: '0x880094D0'),
+      'POWER_OFF': IrCommand(type: 'nec', payload: '0x88C00510'),
+      'MODE': IrCommand(type: 'nec', payload: '0x88089450'),
+      'FAN_SPEED': IrCommand(type: 'nec', payload: '0x8808A460'),
+      'SWING': IrCommand(type: 'nec', payload: '0x88131490'),
+      'TEMP_18': IrCommand(type: 'nec', payload: '0x880834F0'),
+      'TEMP_19': IrCommand(type: 'nec', payload: '0x88084400'),
+      'TEMP_20': IrCommand(type: 'nec', payload: '0x88085410'),
+      'TEMP_21': IrCommand(type: 'nec', payload: '0x88086420'),
+      'TEMP_22': IrCommand(type: 'nec', payload: '0x88087430'),
+      'TEMP_23': IrCommand(type: 'nec', payload: '0x88088440'),
+      'TEMP_24': IrCommand(type: 'nec', payload: '0x88089450'),
+      'TEMP_25': IrCommand(type: 'nec', payload: '0x8808A460'),
+      'TEMP_26': IrCommand(type: 'nec', payload: '0x8808B470'),
+      'TEMP_27': IrCommand(type: 'nec', payload: '0x8808C480'),
+      'TEMP_28': IrCommand(type: 'nec', payload: '0x8808D490'),
+    },
+  ),
+];
+
+// ==========================================
+// IR TRANSMITTER SERVICE
+// ==========================================
+
+class IrService {
+  static const platform = MethodChannel('com.custom.ir_remote/ir');
+
+  static Future<bool> hasIrEmitter() async {
+    try {
+      return await platform.invokeMethod('hasIrEmitter') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static List<int> buildNecPattern(int hexCode) {
     final List<int> pattern = [9000, 4500];
     for (int i = 31; i >= 0; i--) {
       final int bit = (hexCode >> i) & 1;
@@ -174,260 +212,164 @@ class _RemoteHomeScreenState extends State<RemoteHomeScreen> {
     return pattern;
   }
 
-  Future<void> _transmitButton(IrButtonModel btn) async {
+  static Future<void> transmit(BuildContext context, int frequency, IrCommand? cmd) async {
     HapticFeedback.lightImpact();
-    final currentRemote = _profiles[_selectedIndex];
-    List<int> pattern = [];
+    if (cmd == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No IR code assigned. Long-press button to set code.')),
+      );
+      return;
+    }
 
     try {
-      if (btn.type == 'nec') {
-        final String cleanHex = btn.payload.trim().replaceAll('0x', '').replaceAll('0X', '');
-        final int hexVal = int.parse(cleanHex, radix: 16);
-        pattern = _buildNecPattern(hexVal);
+      List<int> pattern = [];
+      if (cmd.type == 'nec') {
+        final clean = cmd.payload.trim().replaceAll('0x', '').replaceAll('0X', '');
+        final val = int.parse(clean, radix: 16);
+        pattern = buildNecPattern(val);
       } else {
-        pattern = btn.payload
-            .split(',')
-            .map((s) => int.parse(s.trim()))
-            .toList();
+        pattern = cmd.payload.split(',').map((e) => int.parse(e.trim())).toList();
       }
 
       await platform.invokeMethod('transmit', {
-        'frequency': currentRemote.frequency,
+        'frequency': frequency,
         'pattern': pattern,
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Invalid IR Code Format: $e')),
+        SnackBar(content: Text('IR Transmit Error: $e')),
       );
     }
   }
+}
 
-  void _showButtonDialog({IrButtonModel? existingBtn, int? btnIndex}) {
-    final labelCtrl = TextEditingController(text: existingBtn?.label ?? '');
-    final payloadCtrl = TextEditingController(text: existingBtn?.payload ?? '0xF300');
-    String selectedType = existingBtn?.type ?? 'nec';
-    int selectedColor = existingBtn?.colorValue ?? 0xFF262A34;
+// ==========================================
+// SCREEN 1: MI REMOTE HOME DASHBOARD
+// ==========================================
 
-    final List<int> colorOptions = [
-      0xFF262A34,
-      0xFFE53935,
-      0xFF1E88E5,
-      0xFF43A047,
-      0xFFFF8F00,
-      0xFF8E24AA,
-    ];
+class MiDashboardScreen extends StatefulWidget {
+  const MiDashboardScreen({super.key});
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1E222B),
-          title: Text(existingBtn == null ? 'Add Button' : 'Edit Button'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: labelCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Button Label (e.g. POWER, 24°C)',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedType,
-                  decoration: const InputDecoration(labelText: 'Signal Type'),
-                  items: const [
-                    DropdownMenuItem(value: 'nec', child: Text('NEC Hex (e.g. 0xF300916E)')),
-                    DropdownMenuItem(value: 'raw', child: Text('Raw Pulses (e.g. 9000,4500...)')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedType = val);
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: payloadCtrl,
-                  decoration: InputDecoration(
-                    labelText: selectedType == 'nec'
-                        ? 'Hex Code (e.g. 0xF300916E)'
-                        : 'Raw Array (Comma separated)',
-                  ),
-                  maxLines: selectedType == 'raw' ? 3 : 1,
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 10,
-                  children: colorOptions.map((c) {
-                    return GestureDetector(
-                      onTap: () => setDialogState(() => selectedColor = c),
-                      child: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Color(c),
-                        child: selectedColor == c
-                            ? const Icon(Icons.check, size: 16, color: Colors.white)
-                            : null,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            if (existingBtn != null && btnIndex != null)
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _profiles[_selectedIndex].buttons.removeAt(btnIndex);
-                  });
-                  _saveProfiles();
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (labelCtrl.text.trim().isEmpty || payloadCtrl.text.trim().isEmpty) return;
-                final newBtn = IrButtonModel(
-                  label: labelCtrl.text.trim(),
-                  type: selectedType,
-                  payload: payloadCtrl.text.trim(),
-                  colorValue: selectedColor,
-                );
-                setState(() {
-                  if (btnIndex != null) {
-                    _profiles[_selectedIndex].buttons[btnIndex] = newBtn;
-                  } else {
-                    _profiles[_selectedIndex].buttons.add(newBtn);
-                  }
-                });
-                _saveProfiles();
-                Navigator.pop(ctx);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
+  @override
+  State<MiDashboardScreen> createState() => _MiDashboardScreenState();
+}
+
+class _MiDashboardScreenState extends State<MiDashboardScreen> {
+  static const String _storageKey = 'mi_remote_saved_devices_v2';
+  List<MiRemoteDevice> _remotes = [];
+  bool _hasIr = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initData();
   }
 
-  void _showAddRemoteDialog() {
-    final nameCtrl = TextEditingController();
-    final freqCtrl = TextEditingController(text: '38000');
+  Future<void> _initData() async {
+    final ir = await IrService.hasIrEmitter();
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_storageKey);
+
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final List<dynamic> list = jsonDecode(raw);
+        setState(() {
+          _hasIr = ir;
+          _remotes = list.map((e) => MiRemoteDevice.fromJson(e)).toList();
+        });
+        return;
+      } catch (_) {}
+    }
+
+    // Default initial remotes
+    setState(() {
+      _hasIr = ir;
+      _remotes = [
+        MiRemoteDevice.fromJson(builtInPresets[0].toJson()),
+        MiRemoteDevice.fromJson(builtInPresets[2].toJson()),
+        MiRemoteDevice.fromJson(builtInPresets[3].toJson()),
+      ];
+    });
+    _saveRemotes();
+  }
+
+  Future<void> _saveRemotes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(_remotes.map((e) => e.toJson()).toList());
+    await prefs.setString(_storageKey, encoded);
+  }
+
+  IconData _getCategoryIcon(String category) {
+    switch (category) {
+      case 'TV':
+        return Icons.tv;
+      case 'AC':
+        return Icons.ac_unit;
+      case 'FAN':
+      default:
+        return Icons.wind_power;
+    }
+  }
+
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'TV':
+        return Colors.blueAccent;
+      case 'AC':
+        return Colors.tealAccent.shade700;
+      case 'FAN':
+      default:
+        return const Color(0xFFFF6700);
+    }
+  }
+
+  void _showJsonBackupModal() {
+    final currentJson = const JsonEncoder.withIndent('  ')
+        .convert(_remotes.map((e) => e.toJson()).toList());
+    final ctrl = TextEditingController(text: currentJson);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E222B),
-        title: const Text('Add New Remote'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Remote Name (e.g. Bedroom AC)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: freqCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Frequency Hz (Default: 38000)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (nameCtrl.text.trim().isEmpty) return;
-              setState(() {
-                _profiles.add(RemoteProfileModel(
-                  name: nameCtrl.text.trim(),
-                  frequency: int.tryParse(freqCtrl.text.trim()) ?? 38000,
-                  buttons: [],
-                ));
-                _selectedIndex = _profiles.length - 1;
-              });
-              _saveProfiles();
-              Navigator.pop(ctx);
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showJsonBackupDialog() {
-    final String currentJson = const JsonEncoder.withIndent('  ')
-        .convert(_profiles.map((e) => e.toJson()).toList());
-    final jsonCtrl = TextEditingController(text: currentJson);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E222B),
-        title: const Text('JSON Backup (Export / Import)'),
+        title: const Text('Backup & Restore (JSON)'),
         content: SizedBox(
           width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Copy this JSON to backup your remotes, or paste a JSON backup below and tap Import:',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: jsonCtrl,
-                maxLines: 10,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+          child: TextField(
+            controller: ctrl,
+            maxLines: 10,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            decoration: const InputDecoration(border: OutlineInputBorder()),
           ),
         ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.copy, size: 18),
-            label: const Text('Copy JSON'),
+            label: const Text('Copy'),
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: jsonCtrl.text));
+              Clipboard.setData(ClipboardData(text: ctrl.text));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('JSON copied to clipboard!')),
+                const SnackBar(content: Text('JSON Copied to Clipboard!')),
               );
             },
           ),
           ElevatedButton.icon(
-            icon: const Icon(Icons.download, size: 18),
-            label: const Text('Import JSON'),
+            icon: const Icon(Icons.restore, size: 18),
+            label: const Text('Restore'),
             onPressed: () {
               try {
-                final List<dynamic> parsed = jsonDecode(jsonCtrl.text);
-                final imported = parsed.map((e) => RemoteProfileModel.fromJson(e)).toList();
-                if (imported.isEmpty) throw Exception('Empty list');
-                setState(() {
-                  _profiles = imported;
-                  _selectedIndex = 0;
-                });
-                _saveProfiles();
+                final List<dynamic> decoded = jsonDecode(ctrl.text);
+                final imported = decoded.map((e) => MiRemoteDevice.fromJson(e)).toList();
+                setState(() => _remotes = imported);
+                _saveRemotes();
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Remotes imported successfully!')),
+                  const SnackBar(content: Text('Remotes Restored Successfully!')),
                 );
-              } catch (e) {
+              } catch (_) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Invalid JSON format!')),
+                  const SnackBar(content: Text('Invalid JSON data!')),
                 );
               }
             },
@@ -439,110 +381,763 @@ class _RemoteHomeScreenState extends State<RemoteHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_profiles.isEmpty) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    final currentRemote = _profiles[_selectedIndex];
-
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E222B),
-        title: DropdownButtonHideUnderline(
-          child: DropdownButton<int>(
-            value: _selectedIndex,
-            dropdownColor: const Color(0xFF232732),
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            icon: const Icon(Icons.arrow_drop_down, color: Colors.amber),
-            items: List.generate(_profiles.length, (i) {
-              return DropdownMenuItem(value: i, child: Text(_profiles[i].name));
-            }),
-            onChanged: (val) {
-              if (val != null) setState(() => _selectedIndex = val);
-            },
-          ),
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.settings_remote, color: Color(0xFFFF6700)),
+            SizedBox(width: 8),
+            Text('Mi Remote', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
         ),
         actions: [
           IconButton(
-            tooltip: 'Add Remote',
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: _showAddRemoteDialog,
-          ),
-          IconButton(
-            tooltip: 'JSON Export / Import',
+            tooltip: 'Backup / Restore JSON',
             icon: const Icon(Icons.import_export),
-            onPressed: _showJsonBackupDialog,
+            onPressed: _showJsonBackupModal,
           ),
-          if (_profiles.length > 1)
-            IconButton(
-              tooltip: 'Delete Remote',
-              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              onPressed: () {
-                setState(() {
-                  _profiles.removeAt(_selectedIndex);
-                  _selectedIndex = 0;
-                });
-                _saveProfiles();
-              },
-            ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(22),
+          preferredSize: const Size.fromHeight(24),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              _hasIr
-                  ? '● IR Blaster Ready (${currentRemote.frequency} Hz) • Long press button to edit'
-                  : '● No IR Blaster Detected • Long press button to edit',
+              _hasIr ? '● IR Blaster Ready' : '● No IR Blaster Detected on Phone',
               style: TextStyle(
-                color: _hasIr ? Colors.greenAccent : Colors.orangeAccent,
                 fontSize: 11,
+                color: _hasIr ? Colors.greenAccent : Colors.orangeAccent,
               ),
             ),
           ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.0,
-          ),
-          itemCount: currentRemote.buttons.length,
-          itemBuilder: (context, index) {
-            final btn = currentRemote.buttons[index];
-            return GestureDetector(
-              onLongPress: () => _showButtonDialog(existingBtn: btn, btnIndex: index),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(btn.colorValue),
-                  foregroundColor: Colors.white,
+      body: _remotes.isEmpty
+          ? const Center(
+              child: Text('No remotes added yet. Tap + to add a remote.'),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _remotes.length,
+              itemBuilder: (context, index) {
+                final remote = _remotes[index];
+                return Card(
+                  color: const Color(0xFF1C2029),
+                  margin: const EdgeInsets.only(bottom: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  elevation: 4,
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    leading: CircleAvatar(
+                      radius: 26,
+                      backgroundColor: _getCategoryColor(remote.category).withOpacity(0.2),
+                      child: Icon(
+                        _getCategoryIcon(remote.category),
+                        color: _getCategoryColor(remote.category),
+                        size: 28,
+                      ),
+                    ),
+                    title: Text(
+                      remote.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                    ),
+                    subtitle: Text(
+                      '${remote.brand} • ${remote.category}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      onPressed: () {
+                        setState(() => _remotes.removeAt(index));
+                        _saveRemotes();
+                      },
+                    ),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => RemoteControlContainer(
+                            device: remote,
+                            onSave: _saveRemotes,
+                          ),
+                        ),
+                      );
+                      setState(() {});
+                    },
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFFFF6700),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Remote', style: TextStyle(fontWeight: FontWeight.bold)),
+        onPressed: () async {
+          final MiRemoteDevice? newDevice = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AddRemoteWizardScreen()),
+          );
+          if (newDevice != null) {
+            setState(() => _remotes.add(newDevice));
+            _saveRemotes();
+          }
+        },
+      ),
+    );
+  }
+}
+
+// ==========================================
+// SCREEN 2: MI REMOTE "ADD REMOTE" WIZARD
+// ==========================================
+
+class AddRemoteWizardScreen extends StatefulWidget {
+  const AddRemoteWizardScreen({super.key});
+
+  @override
+  State<AddRemoteWizardScreen> createState() => _AddRemoteWizardScreenState();
+}
+
+class _AddRemoteWizardScreenState extends State<AddRemoteWizardScreen> {
+  String? _selectedCategory;
+  MiRemoteDevice? _selectedPreset;
+  bool _respondedYes = false;
+  final TextEditingController _customNameCtrl = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Add Remote')),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: _selectedCategory == null
+            ? _buildCategoryStep()
+            : _selectedPreset == null
+                ? _buildBrandStep()
+                : _buildTestStep(),
+      ),
+    );
+  }
+
+  Widget _buildCategoryStep() {
+    final categories = [
+      {'cat': 'TV', 'name': 'TV / Mi TV', 'icon': Icons.tv, 'color': Colors.blueAccent},
+      {'cat': 'AC', 'name': 'Air Conditioner', 'icon': Icons.ac_unit, 'color': Colors.tealAccent},
+      {'cat': 'FAN', 'name': 'Smart / BLDC Fan', 'icon': Icons.wind_power, 'color': const Color(0xFFFF6700)},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Select Appliance Category',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 1.2,
+            ),
+            itemCount: categories.length,
+            itemBuilder: (ctx, i) {
+              final item = categories[i];
+              return InkWell(
+                onTap: () => setState(() => _selectedCategory = item['cat'] as String),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1C2029),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(item['icon'] as IconData, size: 42, color: item['color'] as Color),
+                      const SizedBox(height: 12),
+                      Text(
+                        item['name'] as String,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
                 ),
-                onPressed: () => _transmitButton(btn),
-                child: Text(
-                  btn.label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBrandStep() {
+    final filtered = builtInPresets.where((p) => p.category == _selectedCategory).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() => _selectedCategory = null),
+            ),
+            Text(
+              'Select $_selectedCategory Brand',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.builder(
+            itemCount: filtered.length,
+            itemBuilder: (ctx, i) {
+              final preset = filtered[i];
+              return Card(
+                color: const Color(0xFF1C2029),
+                child: ListTile(
+                  title: Text(preset.brand, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(preset.name),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    setState(() {
+                      _selectedPreset = MiRemoteDevice.fromJson(preset.toJson());
+                      _selectedPreset!.id = DateTime.now().millisecondsSinceEpoch.toString();
+                      _customNameCtrl.text = preset.name;
+                    });
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTestStep() {
+    final powerCmd = _selectedPreset!.keymap['POWER'] ?? _selectedPreset!.keymap['POWER_ON'];
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'Point phone at device & tap Power button',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Long press any button later inside the remote to customize its hex/raw IR code.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+        const SizedBox(height: 36),
+        SizedBox(
+          width: 110,
+          height: 110,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6700),
+              shape: const CircleBorder(),
+              elevation: 8,
+            ),
+            onPressed: () => IrService.transmit(context, _selectedPreset!.frequency, powerCmd),
+            child: const Icon(Icons.power_settings_new, size: 48, color: Colors.white),
+          ),
+        ),
+        const SizedBox(height: 36),
+        if (!_respondedYes) ...[
+          const Text('Does the device respond?', style: TextStyle(fontSize: 16)),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              OutlinedButton(
+                onPressed: () => setState(() => _respondedYes = true),
+                child: const Text('Skip / Customize Later'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: () => setState(() => _respondedYes = true),
+                child: const Text('Yes, It Works!'),
+              ),
+            ],
+          ),
+        ] else ...[
+          TextField(
+            controller: _customNameCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Remote Room / Name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6700)),
+              onPressed: () {
+                if (_customNameCtrl.text.trim().isNotEmpty) {
+                  _selectedPreset!.name = _customNameCtrl.text.trim();
+                }
+                Navigator.pop(context, _selectedPreset);
+              },
+              child: const Text('Pair & Save Remote', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ==========================================
+// SCREEN 3: REMOTE CONTROL UI CONTAINER
+// ==========================================
+
+class RemoteControlContainer extends StatefulWidget {
+  final MiRemoteDevice device;
+  final VoidCallback onSave;
+
+  const RemoteControlContainer({
+    super.key,
+    required this.device,
+    required this.onSave,
+  });
+
+  @override
+  State<RemoteControlContainer> createState() => _RemoteControlContainerState();
+}
+
+class _RemoteControlContainerState extends State<RemoteControlContainer> {
+  // AC State
+  bool _acPower = true;
+  int _acTemp = 24;
+  String _acMode = 'COOL';
+  String _acFan = 'AUTO';
+  bool _acSwing = true;
+
+  void _fireKey(String keyName) {
+    final cmd = widget.device.keymap[keyName];
+    IrService.transmit(context, widget.device.frequency, cmd);
+  }
+
+  // Long Press any button to edit its IR code
+  void _editKeyCode(String keyName) {
+    final existing = widget.device.keymap[keyName];
+    String selectedType = existing?.type ?? 'nec';
+    final payloadCtrl = TextEditingController(text: existing?.payload ?? '0xF300916E');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E222B),
+          title: Text('Edit IR Code: $keyName'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                decoration: const InputDecoration(labelText: 'Protocol Type'),
+                items: const [
+                  DropdownMenuItem(value: 'nec', child: Text('NEC 32-bit Hex')),
+                  DropdownMenuItem(value: 'raw', child: Text('Raw Microsecond Pulses')),
+                ],
+                onChanged: (v) {
+                  if (v != null) setModalState(() => selectedType = v);
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: payloadCtrl,
+                maxLines: selectedType == 'raw' ? 3 : 1,
+                decoration: InputDecoration(
+                  labelText: selectedType == 'nec'
+                      ? 'Hex (e.g. 0xF300916E)'
+                      : 'Raw Pulses (e.g. 9000,4500,560...)',
                 ),
               ),
-            );
-          },
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  widget.device.keymap[keyName] = IrCommand(
+                    type: selectedType,
+                    payload: payloadCtrl.text.trim(),
+                  );
+                });
+                widget.onSave();
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Updated $keyName IR code!')),
+                );
+              },
+              child: const Text('Save Code'),
+            ),
+          ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.amber,
-        foregroundColor: Colors.black,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Button', style: TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: () => _showButtonDialog(),
+    );
+  }
+
+  Widget _miBtn({
+    required String label,
+    required String keyName,
+    IconData? icon,
+    Color? bgColor,
+    Color? fgColor,
+    double size = 68,
+  }) {
+    return GestureDetector(
+      onLongPress: () => _editKeyCode(keyName),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: bgColor ?? const Color(0xFF222630),
+            foregroundColor: fgColor ?? Colors.white,
+            shape: const CircleBorder(),
+            elevation: 4,
+            padding: EdgeInsets.zero,
+          ),
+          onPressed: () => _fireKey(keyName),
+          child: icon != null
+              ? Icon(icon, size: 26)
+              : Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+        ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          children: [
+            Text(widget.device.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            const Text(
+              'Long-press any button to edit IR code',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: widget.device.category == 'TV'
+              ? _buildTvRemote()
+              : widget.device.category == 'AC'
+                  ? _buildAcRemote()
+                  : _buildFanRemote(),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // LAYOUT 1: XIAOMI MI TV REMOTE LAYOUT
+  // ==========================================
+  Widget _buildTvRemote() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        // Top Row: Power, Source, Mute
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _miBtn(label: 'PWR', keyName: 'POWER', icon: Icons.power_settings_new, bgColor: Colors.redAccent),
+            _miBtn(label: 'INPUT', keyName: 'SOURCE', icon: Icons.input),
+            _miBtn(label: 'MUTE', keyName: 'MUTE', icon: Icons.volume_off),
+          ],
+        ),
+
+        // Volume & Channel Pill Rockers + Home/Menu
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Volume Rocker
+            Container(
+              width: 68,
+              height: 160,
+              decoration: BoxDecoration(
+                color: const Color(0xFF222630),
+                borderRadius: BorderRadius.circular(40),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _miBtn(label: '+', keyName: 'VOL_UP', icon: Icons.add, bgColor: Colors.transparent),
+                  const Text('VOL', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  _miBtn(label: '-', keyName: 'VOL_DOWN', icon: Icons.remove, bgColor: Colors.transparent),
+                ],
+              ),
+            ),
+
+            // Center Menu / Home / Back
+            Column(
+              children: [
+                _miBtn(label: 'HOME', keyName: 'HOME', icon: Icons.home_outlined, size: 60),
+                const SizedBox(height: 16),
+                _miBtn(label: 'MENU', keyName: 'MENU', icon: Icons.menu, size: 60),
+                const SizedBox(height: 16),
+                _miBtn(label: 'BACK', keyName: 'BACK', icon: Icons.keyboard_return, size: 60),
+              ],
+            ),
+
+            // Channel Rocker
+            Container(
+              width: 68,
+              height: 160,
+              decoration: BoxDecoration(
+                color: const Color(0xFF222630),
+                borderRadius: BorderRadius.circular(40),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _miBtn(label: 'CH+', keyName: 'CH_UP', icon: Icons.keyboard_arrow_up, bgColor: Colors.transparent),
+                  const Text('CH', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  _miBtn(label: 'CH-', keyName: 'CH_DOWN', icon: Icons.keyboard_arrow_down, bgColor: Colors.transparent),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        // Circular Navigation D-Pad
+        Container(
+          width: 220,
+          height: 220,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF1C2029),
+            border: Border.all(color: Colors.white12, width: 2),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                top: 8,
+                child: _miBtn(label: 'UP', keyName: 'UP', icon: Icons.keyboard_arrow_up, bgColor: Colors.transparent, size: 60),
+              ),
+              Positioned(
+                bottom: 8,
+                child: _miBtn(label: 'DOWN', keyName: 'DOWN', icon: Icons.keyboard_arrow_down, bgColor: Colors.transparent, size: 60),
+              ),
+              Positioned(
+                left: 8,
+                child: _miBtn(label: 'LEFT', keyName: 'LEFT', icon: Icons.keyboard_arrow_left, bgColor: Colors.transparent, size: 60),
+              ),
+              Positioned(
+                right: 8,
+                child: _miBtn(label: 'RIGHT', keyName: 'RIGHT', icon: Icons.keyboard_arrow_right, bgColor: Colors.transparent, size: 60),
+              ),
+              _miBtn(label: 'OK', keyName: 'OK', bgColor: const Color(0xFF2C313E), size: 76),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // LAYOUT 2: XIAOMI MI AC REMOTE LAYOUT
+  // ==========================================
+  Widget _buildAcRemote() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        // AC Digital LCD Display Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: _acPower
+                  ? [const Color(0xFF004D40), const Color(0xFF1C2029)]
+                  : [const Color(0xFF222630), const Color(0xFF181B22)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.tealAccent.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('MODE: $_acMode', style: const TextStyle(color: Colors.tealAccent, fontSize: 12)),
+                  Text('FAN: $_acFan', style: const TextStyle(color: Colors.tealAccent, fontSize: 12)),
+                  Text(_acSwing ? 'SWING: ON' : 'SWING: OFF', style: const TextStyle(color: Colors.tealAccent, fontSize: 12)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Text(
+                _acPower ? '$_acTemp°C' : 'OFF',
+                style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w300, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              const Text('Target Temperature', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            ],
+          ),
+        ),
+
+        // Temp + / - Controls
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            SizedBox(
+              width: 80,
+              height: 80,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF222630),
+                  shape: const CircleBorder(),
+                ),
+                onPressed: () {
+                  setState(() => _acTemp = (_acTemp - 1).clamp(18, 28));
+                  _fireKey('TEMP_$_acTemp');
+                },
+                onLongPress: () => _editKeyCode('TEMP_$_acTemp'),
+                child: const Text('TEMP -', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+            GestureDetector(
+              onLongPress: () => _editKeyCode(_acPower ? 'POWER_OFF' : 'POWER_ON'),
+              child: SizedBox(
+                width: 90,
+                height: 90,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _acPower ? Colors.redAccent : Colors.teal,
+                    shape: const CircleBorder(),
+                  ),
+                  onPressed: () {
+                    setState(() => _acPower = !_acPower);
+                    _fireKey(_acPower ? 'POWER_ON' : 'POWER_OFF');
+                  },
+                  child: const Icon(Icons.power_settings_new, size: 38, color: Colors.white),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 80,
+              height: 80,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF222630),
+                  shape: const CircleBorder(),
+                ),
+                onPressed: () {
+                  setState(() => _acTemp = (_acTemp + 1).clamp(18, 28));
+                  _fireKey('TEMP_$_acTemp');
+                },
+                onLongPress: () => _editKeyCode('TEMP_$_acTemp'),
+                child: const Text('TEMP +', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+
+        // Mode, Fan Speed, Swing Row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _miBtn(
+              label: 'MODE',
+              keyName: 'MODE',
+              size: 74,
+            ),
+            _miBtn(
+              label: 'FAN',
+              keyName: 'FAN_SPEED',
+              size: 74,
+            ),
+            _miBtn(
+              label: 'SWING',
+              keyName: 'SWING',
+              size: 74,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // LAYOUT 3: SMART BLDC FAN REMOTE LAYOUT
+  // ==========================================
+  Widget _buildFanRemote() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _miBtn(
+              label: 'POWER',
+              keyName: 'POWER',
+              icon: Icons.power_settings_new,
+              bgColor: Colors.redAccent,
+              size: 84,
+            ),
+            _miBtn(
+              label: 'LED',
+              keyName: 'LED',
+              icon: Icons.lightbulb_outline,
+              bgColor: const Color(0xFFFF6700),
+              size: 84,
+            ),
+          ],
+        ),
+        const Text('FAN SPEED', style: TextStyle(color: Colors.grey, letterSpacing: 1.5, fontSize: 12)),
+        Wrap(
+          spacing: 18,
+          runSpacing: 18,
+          alignment: WrapAlignment.center,
+          children: [
+            _miBtn(label: '1', keyName: 'SPEED_1'),
+            _miBtn(label: '2', keyName: 'SPEED_2'),
+            _miBtn(label: '3', keyName: 'SPEED_3'),
+            _miBtn(label: '4', keyName: 'SPEED_4'),
+            _miBtn(label: '5', keyName: 'SPEED_5'),
+            _miBtn(label: 'BOOST', keyName: 'BOOST', bgColor: Colors.blueAccent),
+          ],
+        ),
+        const Text('TIMER & SLEEP', style: TextStyle(color: Colors.grey, letterSpacing: 1.5, fontSize: 12)),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          alignment: WrapAlignment.center,
+          children: [
+            _miBtn(label: 'SLEEP', keyName: 'SLEEP', size: 62),
+            _miBtn(label: '1H', keyName: 'TIMER_1H', size: 62),
+            _miBtn(label: '2H', keyName: 'TIMER_2H', size: 62),
+            _miBtn(label: '3H', keyName: 'TIMER_3H', size: 62),
+            _miBtn(label: '6H', keyName: 'TIMER_6H', size: 62),
+          ],
+        ),
+      ],
     );
   }
 }

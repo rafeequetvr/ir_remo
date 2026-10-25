@@ -1,9 +1,13 @@
-name: Build APK from Phone
+name: Build and Release APK
 
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+
+# GitHub Releases-ലേക്ക് ഫയൽ അപ്‌ലോഡ് ചെയ്യാനുള്ള അനുമതി
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -36,9 +40,14 @@ jobs:
         run: |
           flutter pub add shared_preferences
           flutter build apk --release
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Universal-IR-Remote.apk
 
-      - name: Upload Ready-to-Install APK
-        uses: actions/upload-artifact@v4
+      - name: Publish Direct APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: Universal-IR-Remote-APK
-          path: app_build/build/app/outputs/flutter-apk/app-release.apk
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Universal IR Remote v1.0.${{ github.run_number }}"
+          body: "Direct APK download ready for installation."
+          files: app_build/build/app/outputs/flutter-apk/Universal-IR-Remote.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

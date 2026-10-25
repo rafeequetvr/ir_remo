@@ -5,7 +5,6 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
-# GitHub Releases-ലേക്ക് ഫയൽ അപ്‌ലോഡ് ചെയ്യാനുള്ള അനുമതി
 permissions:
   contents: write
 
@@ -28,26 +27,73 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Flutter Project Automatically
+      - name: Generate Project, Custom App Name & Custom Icon
         run: |
           flutter create --org com.custom --project-name ir_remote --platforms android app_build
           cp setup/main.dart app_build/lib/main.dart
           cp setup/MainActivity.kt app_build/android/app/src/main/kotlin/com/custom/ir_remote/MainActivity.kt
+          
+          # 1. Add IR Permission and Change App Display Name to "Mi Remote"
           sed -i 's/<application/<uses-permission android:name="android.permission.TRANSMIT_IR" \/>\n    <application/' app_build/android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="ir_remote"/android:label="Mi Remote"/g' app_build/android/app/src/main/AndroidManifest.xml
+
+          # 2. Generate Custom Orange & Dark Remote App Icon (No Flutter Logo!)
+          python3 - << 'EOF'
+          import zlib, struct
+
+          def make_icon(size):
+              raw = bytearray()
+              cx, cy = size / 2.0, size / 2.0
+              for y in range(size):
+                  raw.append(0)
+                  for x in range(size):
+                      dx, dy = x - cx, y - cy
+                      dist = (dx*dx + dy*dy) ** 0.5
+                      # Dark rounded background
+                      r, g, b, a = 24, 28, 36, 255
+                      # Orange outer ring
+                      if size*0.36 <= dist <= size*0.42:
+                          r, g, b = 255, 103, 0
+                      # Center power button circle
+                      elif dist <= size*0.18:
+                          r, g, b = 255, 103, 0
+                      # IR waves at top
+                      elif dy < -size*0.18 and abs(dx) < size*0.22 and int(dist / (size*0.04)) % 2 == 0:
+                          r, g, b = 0, 230, 180
+                      raw.extend([r, g, b, a])
+
+              def chunk(tag, data):
+                  return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
+
+              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+              return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b"")
+
+          folders = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+          for folder, sz in folders.items():
+              path = f"app_build/android/app/src/main/res/{folder}/ic_launcher.png"
+              with open(path, "wb") as f:
+                  f.write(make_icon(sz))
+          EOF
 
       - name: Add Dependencies & Build Release APK
         working-directory: app_build
         run: |
           flutter pub add shared_preferences
           flutter build apk --release
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Universal-IR-Remote.apk
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Mi-Remote.apk
 
       - name: Publish Direct APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: "Universal IR Remote v1.0.${{ github.run_number }}"
-          body: "Direct APK download ready for installation."
-          files: app_build/build/app/outputs/flutter-apk/Universal-IR-Remote.apk
+          name: "Mi Remote v1.0.${{ github.run_number }}"
+          body: "Updated with Custom App Icon, Name, Haier HS-12NSS3(DCINV) & V-Guard Multi-Scanner."
+          files: app_build/build/app/outputs/flutter-apk/Mi-Remote.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
